@@ -1,0 +1,4 @@
+(executable
+ (public_name berkeley-cs164-arm-darwin)
+ (name main)
+ (libraries cs164))

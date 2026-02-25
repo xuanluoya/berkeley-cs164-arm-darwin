@@ -1,0 +1,8 @@
+(library
+ (name cs164)
+ (modules
+ s_exp
+ lexer
+ asm
+ compile)
+ (libraries unix))

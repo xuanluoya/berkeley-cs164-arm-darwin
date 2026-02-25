@@ -1,0 +1,6 @@
+.DS_Store
+_build
+a.out
+*.o
+program.s
+program
