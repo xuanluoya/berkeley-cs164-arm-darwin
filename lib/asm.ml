@@ -25,8 +25,8 @@ type directive =
   | Label of string (* 定义一个符号，代表“当前地址” *)
   | P2align of int (* 让接下来的 label 按 2² = 4 字节对齐，ARM64 指令长度是 4 字节固定 *)
   | Mov of operand * operand
-  | Ldr of register * address
-  | Str of register * address
+  | Ldr of register * address (* 将数据从 内存地址 加载到 寄存器 中 *)
+  | Str of register * address (* 将数据从 寄存器 存储到 内存地址 中 *)
   | Adrp of register * string
   | AddLabel of register * register * string
   | Stp of register * register * register * int * addressing
@@ -49,12 +49,14 @@ type directive =
   | Comment of string
 
 let string_of_address = function
+  (* 栈寻址，基于偏移量 *)
   | BaseOffset (rn, off) ->
       Printf.sprintf "[%s, #%d]" (string_of_register rn) off
+  (* 栈寻址，基于寄存器 *)
   | BaseIndex (rn, rm) ->
       Printf.sprintf "[%s, %s]" (string_of_register rn) (string_of_register rm)
 
-let string_of_base_offset base offset =
+(* let string_of_base_offset base offset =
   Printf.sprintf "[%s, #%d]" (string_of_register base) offset
 
 let string_of_stp_ldp mnemonic r1 r2 base offset mode =
@@ -65,6 +67,21 @@ let string_of_stp_ldp mnemonic r1 r2 base offset mode =
   | Offset ->
       Printf.sprintf "\t%s %s, %s" mnemonic regs
         (string_of_base_offset base offset)
+  | PreIndex ->
+      Printf.sprintf "\t%s %s, [%s, #%d]!" mnemonic regs
+        (string_of_register base) offset
+  | PostIndex ->
+      Printf.sprintf "\t%s %s, [%s], #%d" mnemonic regs
+        (string_of_register base) offset *)
+
+let string_of_stp_ldp mnemonic r1 r2 base offset mode =
+  let regs =
+    Printf.sprintf "%s, %s" (string_of_register r1) (string_of_register r2)
+  in
+  match mode with
+  | Offset ->
+      let addr_str = string_of_address (BaseOffset (base, offset)) in
+      Printf.sprintf "\t%s %s, %s" mnemonic regs addr_str
   | PreIndex ->
       Printf.sprintf "\t%s %s, [%s, #%d]!" mnemonic regs
         (string_of_register base) offset

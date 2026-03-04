@@ -3,7 +3,7 @@ open Cs164.Compile
 
 let () =
   let prog =
-    match parse "(is_num false)" with
+    match parse "(let ((x 2)) (+ 1 x))" with
     | [ e ] -> e
     | _ -> failwith "expected exactly one expression"
   in

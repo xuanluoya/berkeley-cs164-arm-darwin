@@ -4,5 +4,6 @@
  s_exp
  lexer
  asm
- compile)
+ compile
+ util)
  (libraries unix))
