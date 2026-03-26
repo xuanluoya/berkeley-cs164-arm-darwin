@@ -1,7 +1,11 @@
 type register =
   | X0 (* 返回值 / 第一个参数 *)
   | X1 (* 第二个参数 *)
+  | X8 (* 基址 *)
+  | X9 (* 基址 *)
   | X19 (* callee-saved *)
+  | X29 (* callee-saved *)
+  | X30 (* callee-saved *)
   | Sp (* 栈指针 *)
   | Fp (* 帧指针 *)
   | Lr (* 返回地址 *)
@@ -9,7 +13,11 @@ type register =
 let string_of_register = function
   | X0 -> "x0"
   | X1 -> "x1"
+  | X8 -> "x8"
+  | X9 -> "x9"
   | X19 -> "x19"
+  | X29 -> "x29"
+  | X30 -> "x30"
   | Sp -> "sp"
   | Fp -> "x29"
   | Lr -> "x30"
@@ -56,36 +64,22 @@ let string_of_address = function
   | BaseIndex (rn, rm) ->
       Printf.sprintf "[%s, %s]" (string_of_register rn) (string_of_register rm)
 
-(* let string_of_base_offset base offset =
-  Printf.sprintf "[%s, #%d]" (string_of_register base) offset
-
 let string_of_stp_ldp mnemonic r1 r2 base offset mode =
   let regs =
     Printf.sprintf "%s, %s" (string_of_register r1) (string_of_register r2)
   in
   match mode with
   | Offset ->
-      Printf.sprintf "\t%s %s, %s" mnemonic regs
-        (string_of_base_offset base offset)
-  | PreIndex ->
-      Printf.sprintf "\t%s %s, [%s, #%d]!" mnemonic regs
-        (string_of_register base) offset
-  | PostIndex ->
-      Printf.sprintf "\t%s %s, [%s], #%d" mnemonic regs
-        (string_of_register base) offset *)
-
-let string_of_stp_ldp mnemonic r1 r2 base offset mode =
-  let regs =
-    Printf.sprintf "%s, %s" (string_of_register r1) (string_of_register r2)
-  in
-  match mode with
-  | Offset ->
+      (* 标准偏移：[base, #imm] *)
       let addr_str = string_of_address (BaseOffset (base, offset)) in
-      Printf.sprintf "\t%s %s, %s" mnemonic regs addr_str
+      Printf.sprintf "\t%s %s, %s, [%s, #%d]" mnemonic regs addr_str
+        (string_of_register base) offset
   | PreIndex ->
+      (* 预索引：[base, #imm]! *)
       Printf.sprintf "\t%s %s, [%s, #%d]!" mnemonic regs
         (string_of_register base) offset
   | PostIndex ->
+      (* 后索引：[base], #imm *)
       Printf.sprintf "\t%s %s, [%s], #%d" mnemonic regs
         (string_of_register base) offset
 

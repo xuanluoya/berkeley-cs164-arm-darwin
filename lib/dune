@@ -5,5 +5,5 @@
  lexer
  asm
  compile
- util)
+ driver)
  (libraries unix))
