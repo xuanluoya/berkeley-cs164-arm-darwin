@@ -58,6 +58,33 @@ let lf_to_bool =
     Orr (Reg X0, Reg X0, Imm bool_tagged.tag);
   ]
 
+let extern_function_bridge name =
+  [
+    Label ("extern_" ^ name);
+    Bl name;
+    (* 如果外部函数有返回值，则执行以下清理工作 *)
+    (* 恢复 entry 里压入的寄存器并归还 32 字节 *)
+    Ldp (X29, X30, Sp, 32, PostIndex);
+    (* 安全返回 *)
+    Ret;
+  ]
+
+let call_extern_function name = "extern_" ^ name
+
+let ensure_type reg mask tag =
+  [
+    (* 保证op value不变，不影响后续 *)
+    Mov (Reg X9, Reg reg);
+    And (Reg X9, Reg X9, Imm mask);
+    Cmp (Reg X9, Imm tag);
+    (* (Z flag != 0) 不相等则跳转至 error 标签 *)
+    Bne (call_extern_function "error");
+  ]
+
+let ensure_type_is_num reg = ensure_type reg num_tagged.mask num_tagged.tag
+let ensure_type_is_bool reg = ensure_type reg bool_tagged.mask bool_tagged.tag
+let ensure_type_is_pair reg = ensure_type reg heap_tagged.mask pair_tagged.tag
+
 let gensym =
   let counter = ref 0 in
   (* 因为闭包的存在counter会被持久化储存 *)
@@ -129,20 +156,30 @@ let rec compile_exp tab stack_index prog =
       e1_result @ e1_address @ e2_result @ pair_logic
   | Lst [ Sym "left"; e ] ->
       compile_exp tab stack_index e
+      (* 类型检查 *)
+      @ ensure_type_is_pair X0
       (* 减去tag才能得到真实寻址 *)
       @ [ Ldr (X0, BaseOffset (X0, -pair_tagged.tag)) ]
   | Lst [ Sym "right"; e ] ->
       compile_exp tab stack_index e
+      (* 类型检查 *)
+      @ ensure_type_is_pair X0
       (* 减去tag才能得到真实寻址 *)
       @ [ Ldr (X0, BaseOffset (X0, -pair_tagged.tag + 8)) ]
   | Lst [ Sym "inc"; arg ] ->
       compile_exp tab stack_index arg
+      (* 类型检查 *)
+      @ ensure_type_is_num X0
       @ [ Add (Reg X0, Reg X0, operand_of_num 1) ]
   | Lst [ Sym "dec"; arg ] ->
       compile_exp tab stack_index arg
+      (* 类型检查 *)
+      @ ensure_type_is_num X0
       @ [ Sub (Reg X0, Reg X0, operand_of_num 1) ]
   | Lst [ Sym "not"; arg ] ->
       compile_exp tab stack_index arg
+      (* 类型检查 *)
+      @ ensure_type_is_bool X0
       @ [
           (*
             Cmp: X0 - #31 (false)
@@ -155,6 +192,8 @@ let rec compile_exp tab stack_index prog =
       @ zf_to_bool
   | Lst [ Sym "is_zero"; arg ] ->
       compile_exp tab stack_index arg
+      (* 类型检查 *)
+      @ ensure_type_is_num X0
       @ [ Cmp (Reg X0, operand_of_num 0) ]
       @ zf_to_bool
   | Lst [ Sym "is_num"; arg ] ->
@@ -178,12 +217,16 @@ let rec compile_exp tab stack_index prog =
       @ [ Label continue_label ]
   | Lst [ Sym "+"; e1; e2 ] ->
       compile_exp tab stack_index e1
+      (* 类型检测 *)
+      @ ensure_type_is_num X0
       @ [
           (* Push value to Stack address *)
           Str (X0, BaseOffset (Sp, stack_index));
         ]
         (* Make sure stack index is updated before e2 *)
       @ compile_exp tab (stack_index - 8) e2
+      (* 类型检测 *)
+      @ ensure_type_is_num X0
       (* Arm64与X86不同，设计更为严谨，等价为X0 = X1 + X0 *)
       @ [
           (* Pop value to X1 *)
@@ -193,8 +236,12 @@ let rec compile_exp tab stack_index prog =
   (* Same like "+" *)
   | Lst [ Sym "-"; e1; e2 ] ->
       compile_exp tab stack_index e1
+      (* 类型检测 *)
+      @ ensure_type_is_num X0
       @ [ Str (X0, BaseOffset (Sp, stack_index)) ]
       @ compile_exp tab (stack_index - 8) e2
+      (* 类型检测 *)
+      @ ensure_type_is_num X0
       @ [ Ldr (X1, BaseOffset (Sp, stack_index)); Sub (Reg X0, Reg X1, Reg X0) ]
   | Lst [ Sym "="; e1; e2 ] ->
       compile_exp tab stack_index e1
@@ -261,7 +308,8 @@ let compile prog =
     ]
   in
   string_of_program
-    ([ Text; Global "entry"; P2align 2; Label "entry" ]
-    @ prologue
+    ([ Text; Global "entry"; P2align 2 ]
+    @ extern_function_bridge "error"
+    @ [ Label "entry" ] @ prologue
     @ compile_exp Symtab.empty (-8) prog
     @ epilogue)

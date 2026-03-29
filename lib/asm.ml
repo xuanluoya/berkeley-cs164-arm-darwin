@@ -51,7 +51,7 @@ type directive =
   | Br of register
   | Beq of string
   | Bne of string
-  | Bl of string
+  | Bl of string (* 声明一个外部符号，告诉链接器这个符号在其他地方定义 *)
   | Blr of register
   | Ret
   | Comment of string
@@ -147,6 +147,7 @@ let string_of_directive = function
       Printf.sprintf "\tcset %s, %s" (string_of_register rd) cond
   | B l -> Printf.sprintf "\tb _%s" l
   | Beq l -> Printf.sprintf "\tb.eq _%s" l
+  | Bne l -> Printf.sprintf "\tb.ne _%s" l
   | Bl l -> Printf.sprintf "\tbl _%s" l
   | Br rn -> Printf.sprintf "\tbr %s" (string_of_register rn)
   | Blr rn -> Printf.sprintf "\tblr %s" (string_of_register rn)

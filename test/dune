@@ -1,2 +1,10 @@
+(rule
+ (targets program)
+ (deps %{project_root}/runtime.c program.s)
+ (action
+  (run clang -o program %{deps})))
+
 (test
- (name test_berkeley_cs164_arm_darwin))
+ (name test_berkeley_cs164_arm_darwin)
+ (libraries cs164 unix)
+ (modules test_berkeley_cs164_arm_darwin))
