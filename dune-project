@@ -13,14 +13,14 @@
 
 (license LICENSE)
 
-(documentation https://url/to/documentation)
+(documentation https://github.com/xuanluoya/berkeley-cs164-arm-darwin)
 
 (package
  (name berkeley-cs164-arm-darwin)
- (synopsis "A short synopsis")
- (description "A longer description")
+ (synopsis "A simple Lisp compiler for teaching runs on Apple Arm64")
+ (description "This repository is a reconstruction of the Apple Arm architecture of the CS164-2025 programming language and compiler course at the University of California, Berkeley.")
  (depends ocaml)
  (tags
-  ("add topics" "to describe" your project)))
+  ("Compiler" "Tutorial")))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html

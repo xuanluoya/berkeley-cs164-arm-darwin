@@ -58,18 +58,71 @@ let lf_to_bool =
     Orr (Reg X0, Reg X0, Imm bool_tagged.tag);
   ]
 
+(*
+  Stp: 寄存器加载 / Ldp: 寄存器存储
+    - 一次保存/恢复两个寄存器
+    - 天然保持16字节栈对齐
+    - 比分别使用 Str/Ldr 更高效
+
+  > 当我们的函数有返回值时，我们需要使用 ret 返回到调用者（汇编代码）
+  ```
+  _1:
+    mov X0, X0, #10
+    ; 返回到调用者（汇编代码）
+    ret
+
+  _entry:
+    b _1
+    ; 回到 runtime
+    ret
+  ```
+
+  X30（链接寄存器 LR）:
+    存储函数的返回地址
+    - 当执行 `Bl label` 时：
+      - PC（程序计数器）跳转到 label
+      - X30 自动设置为 Bl 下一条指令的地址（返回点）
+
+  X19（堆指针）:
+    X19 专门存储堆起始地址（来自C运行时的 malloc)
+    - C函数可能修改任何 X0-X18 寄存器（调用者保存）
+    - 但 X19-X28 是被调用者保存（callee-saved）
+    - 按照约定，如果C函数使用这些寄存器，它必须恢复它们
+    - 但我们不信任外部C函数，所以主动保存
+*)
 let extern_function_bridge name =
   [
     Label ("extern_" ^ name);
+    (* 保存LR和另一个寄存器以保持16字节栈对齐 *)
+    (* 保存X30(LR)：防止 Bl 指令覆盖返回地址 *)
+    (* 保存X19：堆指针，C函数可能修改它 *)
+    (* 使用Stp/Ldp保存两个寄存器（16字节） *)
+    (* 确保栈指针始终保持16字节对齐 *)
+    (*
+      1. PreIndex模式：先计算地址，再存储，最后更新sp
+      2. 计算目标地址：`Sp - 16`（16字节 = 2个寄存器的空间）
+      3. 存储寄存器:
+        - [Sp-16] ← X30 的低64位
+        - [Sp-8] ← X19 的低64位
+      4. 更新Sp：Sp ← Sp - 16
+    *)
+    Stp (X30, X19, Sp, -16, PreIndex);
+    (* 调用C函数 *)
     Bl name;
-    (* 如果外部函数有返回值，则执行以下清理工作 *)
-    (* 恢复 entry 里压入的寄存器并归还 32 字节 *)
-    Ldp (X29, X30, Sp, 32, PostIndex);
-    (* 安全返回 *)
+    (* 恢复寄存器 *)
+    (*
+      1. PostIndex模式：先存储，再计算地址，最后更新sp
+      2. 存储寄存器:
+        - [Sp] ← X30 的低64位
+        - [Sp+8] ← X19 的低64位
+      3. 更新Sp：Sp ← Sp + 16
+    *)
+    Ldp (X30, X19, Sp, 16, PostIndex);
+    (* 返回调用者 *)
     Ret;
   ]
 
-let call_extern_function name = "extern_" ^ name
+let extern_function name = "extern_" ^ name
 
 let ensure_type reg mask tag =
   [
@@ -78,12 +131,15 @@ let ensure_type reg mask tag =
     And (Reg X9, Reg X9, Imm mask);
     Cmp (Reg X9, Imm tag);
     (* (Z flag != 0) 不相等则跳转至 error 标签 *)
-    Bne (call_extern_function "error");
+    Bne (extern_function "error");
   ]
 
 let ensure_type_is_num reg = ensure_type reg num_tagged.mask num_tagged.tag
 let ensure_type_is_bool reg = ensure_type reg bool_tagged.mask bool_tagged.tag
 let ensure_type_is_pair reg = ensure_type reg heap_tagged.mask pair_tagged.tag
+
+(* (n + 15) / 16 * 16 *)
+let align_to_16 bytes = (bytes + 15) land lnot 15
 
 let gensym =
   let counter = ref 0 in
@@ -111,7 +167,7 @@ let rec compile_exp tab stack_index prog =
   | Sym "false" -> [ Mov (Reg X0, operand_of_bool false) ]
   | Lst [ Sym "let"; Lst [ Lst [ Sym var; e ] ]; body ] ->
       compile_exp tab stack_index e
-      (* 将栈上的值存入X0 *)
+      (* 从X0存到栈地址 *)
       @ [ Str (X0, BaseOffset (Sp, stack_index)) ]
       (* 把栈地址和变量名放入指表中，继续编译body *)
       @ compile_exp (Symtab.add var stack_index tab) (stack_index - 8) body
@@ -166,6 +222,7 @@ let rec compile_exp tab stack_index prog =
       @ ensure_type_is_pair X0
       (* 减去tag才能得到真实寻址 *)
       @ [ Ldr (X0, BaseOffset (X0, -pair_tagged.tag + 8)) ]
+  | Lst [ Sym "read_num" ] -> [ Bl (extern_function "read_num") ]
   | Lst [ Sym "inc"; arg ] ->
       compile_exp tab stack_index arg
       (* 类型检查 *)
@@ -280,6 +337,30 @@ let rec compile_exp tab stack_index prog =
 let string_of_program prog =
   prog |> List.map string_of_directive |> String.concat "\n"
 
+(*
+  栈向`低地址`增长，所以sp指向栈顶（最低地址）
+    - Stp (X29, X30, Sp, -64, PreIndex) 分配64字节栈帧
+    - stack_index = 32 作为第一个局部变量的起始位置
+
+  内存地址（从低到高）
+  ┌──────────────────────────────┐ ← sp（栈顶，当前执行位置）
+  │ 未使用 (0-31字节)            │
+  │ sp+0 到 sp+31                │
+  ├──────────────────────────────┤ ← sp+32（stack_index起始位置）
+  │ 局部变量区域                 │
+  │ 例如：[sp, #32]存read_num结果│
+  ├──────────────────────────────┤ ← sp+48
+  │ 未使用                       │
+  ├──────────────────────────────┤ ← sp+56
+  │ 保存的 X30 (LR)              │ ← sp+56到sp+63
+  ├──────────────────────────────┤ ← sp+64
+  │ 保存的 X29 (FP)              │ ← sp+64到sp+71（实际上超出64字节）
+  └──────────────────────────────┘
+
+  - [sp, #32] 到 [sp, #16]：局部变量区域 + 空闲空间
+  - [sp, #16] 到 [sp, #8]：空闲空间
+  - [sp, #8] 到 [sp, #0]：保存的X30和X29
+*)
 let compile prog =
   (* AppleArm64:
        - 硬件强制规定：任何通过 SP 进行的内存访问, 其 SP 的值必须是 16 字节对齐的
@@ -289,9 +370,8 @@ let compile prog =
   let prologue =
     [
       (* 开辟空间 + 存寄存器 *)
-      (* SP -= 32 并且把寄存器存入新的 SP *)
-      (* 先把 sp 减去 32，然后把 x29, x30 存入新的 sp 位置 *)
-      Stp (X29, X30, Sp, -32, PreIndex);
+      (* 将 X30 和 X19 存入 [sp-64]，然后将 sp -= 64（PreIndex模式） *)
+      Stp (X29, X30, Sp, -64, PreIndex);
       (* !关键!：此时 x19 拿到了真正的堆起始地址 *)
       (* 从 x0 接收 heap 地址并存入 x19 *)
       (* heap 是 entry 函数的第一个量 *)
@@ -301,8 +381,8 @@ let compile prog =
   let epilogue =
     [
       (* 恢复寄存器 + 销毁空间 *)
-      (* 从当前 sp 读出 x29, x30，然后把 sp 加上 32 *)
-      Ldp (X29, X30, Sp, 32, PostIndex);
+      (* 从 [sp] 读取到 X30 和 X19，然后将 sp += 16（PostIndex模式）*)
+      Ldp (X29, X30, Sp, 64, PostIndex);
       Ret;
       (* 返回 C 环境 *)
     ]
@@ -310,6 +390,8 @@ let compile prog =
   string_of_program
     ([ Text; Global "entry"; P2align 2 ]
     @ extern_function_bridge "error"
+    @ extern_function_bridge "read_num"
     @ [ Label "entry" ] @ prologue
-    @ compile_exp Symtab.empty (-8) prog
+    (* 从32字节开始分配，确保在栈帧之内 *)
+    @ compile_exp Symtab.empty 32 prog
     @ epilogue)
