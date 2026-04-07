@@ -1,1 +1,1 @@
-(pair (read_num) (read_num))
+(print (pair (read_num) (read_num)))

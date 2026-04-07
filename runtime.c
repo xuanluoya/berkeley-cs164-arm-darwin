@@ -51,13 +51,14 @@ uint64_t read_num(void) {
   int r;
   if (scanf("%d", &r) != 1) {
     printf("Error reading number\n");
-    exit(1);
   }
   return (uint64_t)(r) << NUM_SHIFT;
 }
 
+void print_newline(void) { printf("\n"); }
+
 int main(int argc, char **argv) {
   void *heap = (void *)malloc(4096);
-  print_value(entry(heap));
+  entry(heap);
   return 0;
 }

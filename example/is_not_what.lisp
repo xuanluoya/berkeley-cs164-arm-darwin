@@ -1,1 +1,1 @@
-(+ 1 true)
+(print (+ 1 true))

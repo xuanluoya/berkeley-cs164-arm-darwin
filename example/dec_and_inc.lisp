@@ -1,1 +1,1 @@
-(pair (dec 1) (inc 1))
+(print (pair (dec 1) (inc 1)))

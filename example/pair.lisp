@@ -1,1 +1,1 @@
-(pair 1 (pair true 2))
+(print (pair 1 (pair true 2)))

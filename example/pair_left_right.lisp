@@ -1,1 +1,1 @@
-(left (pair (right (pair 3 true)) 1))
+(print (left (pair (right (pair 3 true)) 1))

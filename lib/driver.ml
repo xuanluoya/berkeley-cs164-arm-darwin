@@ -1,6 +1,8 @@
 open Compile
 open Lexer
 
+exception Lexer_error of string
+
 (* with_open_text接受一个匿名函数来指导拿到文件句柄后干什么 *)
 let read_file filename = In_channel.with_open_text filename In_channel.input_all
 
@@ -8,12 +10,11 @@ let write_file filename content =
   Out_channel.with_open_text filename (fun oc -> output_string oc content)
 
 let compile_source source =
-  let prog =
-    match parse source with
-    | [ e ] -> e
-    | _ -> failwith "expected exactly one expression"
-  in
-  compile prog
+  let prog = parse source in
+  match prog with
+  (* [ e ] -> [ e ] : 恰好一个表达式，现在我们需要支持一次识别一个以上表达式了 *)
+  | [] -> raise (Lexer_error "empty program")
+  | _ -> compile prog
 
 let compile_to_file source =
   let asm = compile_source source in
