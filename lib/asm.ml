@@ -3,8 +3,8 @@
   X8      : 间接结果寄存器（调用者保存）
   X9-X15  : 临时寄存器（调用者保存）
   X19-X28 : 被调用者保存寄存器（callee-saved）
-  X29     : 帧指针
-  X30     : 链接寄存器（LR）
+  X29     : 帧指针 (FP)（Frame Pointer），指向当前函数栈帧的底部
+  X30     : 链接寄存器（LR）链接寄存器（Link Register）, 保存函数返回地址
 *)
 type register =
   | X0 (* 返回值 / 第一个参数 *)
@@ -32,7 +32,12 @@ let string_of_register = function
 
 type operand = Reg of register | Imm of int
 type address = BaseOffset of register * int | BaseIndex of register * register
-type addressing = Offset | PreIndex | PostIndex
+
+type addressing =
+  | Offset
+  (* 强制将计算后的新地址写回 sp 寄存器 *)
+  | PreIndex
+  | PostIndex
 
 (* Apple Arm64 指令集（子集，包含所有需要用到的） *)
 type directive =
