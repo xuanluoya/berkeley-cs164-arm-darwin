@@ -10,7 +10,7 @@
 (define (ref_sum n)
   (if (zero? n)
     n
-    (+ n (ref_sum (dec n)))))
+    (+ n (ref_sum (sub1 n)))))
 |#
 
 #|
@@ -22,11 +22,11 @@
 (define (sum n total)
   (if (zero? n)
     total
-    (sum (dec n) (+ n total))))
+    (sum (sub1 n) (+ n total))))
 
 (do
   #|
-    (print (ref_sum (read_num)))
+    (display (ref_sum (readnum)))
     (newline)
   |#
-  (print (sum (read_num) 0)))
+  (display (sum (readnum) 0)))

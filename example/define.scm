@@ -5,6 +5,6 @@
 (define (id x) x)
 
 (do
-    (print (add 1 2))
+    (display (add 1 2))
     (newline)
-    (print (id 4)) )
+    (display (id 4)) )

@@ -343,7 +343,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
           (* 把栈值拉到X0上 *)
           [ Ldr (X0, BaseOffset (Sp, addr)) ]
       | None -> raise (Compile_error ("Undefined variable: " ^ var)))
-  | Prim2 (Pair, e1, e2) ->
+  | Prim2 (Cons, e1, e2) ->
       (* Pair 的约定：
            - 堆中连续的16个字节
            - 起始位置    （偏移 0）：永远放第一个元素 e1
@@ -379,13 +379,13 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
         ]
       in
       e1_result @ e1_address @ e2_result @ pair_logic
-  | Prim1 (Left, e) ->
+  | Prim1 (Car, e) ->
       compile_exp ~curr_stack_size defns tab stack_index e false
       (* 类型检查 *)
       @ ensure_type_is_pair X0
       (* 减去tag才能得到真实寻址 *)
       @ [ Ldr (X0, BaseOffset (X0, -pair_tagged.tag)) ]
-  | Prim1 (Right, e) ->
+  | Prim1 (Cdr, e) ->
       compile_exp ~curr_stack_size defns tab stack_index e false
       (* 类型检查 *)
       @ ensure_type_is_pair X0
@@ -416,7 +416,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
             (if i = List.length exps - 1 then is_tail else false))
         exps
       |> List.concat
-  | Prim1 (Print, arg) ->
+  | Prim1 (Display, arg) ->
       compile_exp ~curr_stack_size defns tab stack_index arg false
       @ [
           Bl (extern_function "print_value");
@@ -428,12 +428,12 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
       [
         Bl (extern_function "print_newline"); Mov (Reg X0, operand_of_bool true);
       ]
-  | Prim1 (Inc, arg) ->
+  | Prim1 (Add1, arg) ->
       compile_exp ~curr_stack_size defns tab stack_index arg false
       (* 类型检查 *)
       @ ensure_type_is_num X0
       @ [ Add (Reg X0, Reg X0, operand_of_num 1) ]
-  | Prim1 (Dec, arg) ->
+  | Prim1 (Sub1, arg) ->
       compile_exp ~curr_stack_size defns tab stack_index arg false
       (* 类型检查 *)
       @ ensure_type_is_num X0

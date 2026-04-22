@@ -1,0 +1,1 @@
+(display (cons (readnum) (readnum)))

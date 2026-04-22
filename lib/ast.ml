@@ -7,32 +7,32 @@ open S_exp
 type prim0 = ReadNum | NewLine
 
 let prim0_of_string = function
-  | "read_num" -> Some ReadNum
+  | "readnum" -> Some ReadNum
   | "newline" -> Some NewLine
   | _ -> None
 
-type prim1 = Inc | Dec | ZeroP | NumP | Not | Left | Right | Print
+type prim1 = Add1 | Sub1 | ZeroP | NumP | Not | Car | Cdr | Display
 
 let prim1_of_string = function
-  | "inc" -> Some Inc
-  | "dec" -> Some Dec
+  | "add1" -> Some Add1
+  | "sub1" -> Some Sub1
   | "zero?" -> Some ZeroP
-  | "num?" -> Some NumP
+  | "number?" -> Some NumP
   | "not" -> Some Not
-  | "left" -> Some Left
-  | "right" -> Some Right
-  | "print" -> Some Print
+  | "car" -> Some Car
+  | "cdr" -> Some Cdr
+  | "display" -> Some Display
   | _ -> None
 
-type prim2 = Plus | Minus | Eq | Lt | Gt | Pair
+type prim2 = Plus | Minus | Eq | Lt | Gt | Cons
 
 let prim2_of_string = function
-  | "plus" -> Some Plus
+  (* | "plus" -> Some Plus
   | "minus" -> Some Minus
-  | "eq" -> Some Eq
+  | "eq" -> Some Eq *)
   | "<" -> Some Lt
   | ">" -> Some Gt
-  | "pair" -> Some Pair
+  | "cons" -> Some Cons
   | "+" -> Some Plus
   | "-" -> Some Minus
   | "=" -> Some Eq
@@ -67,8 +67,8 @@ let get_defn defns name = List.find (fun d -> d.name = name) defns
 
 let rec expr_of_s_exp : s_exp -> expr = function
   | Num x -> Num x
-  | Sym "true" -> True
-  | Sym "false" -> False
+  | Sym "#t" -> True
+  | Sym "#f" -> False
   | Sym var -> Var var
   | Lst [ Sym "let"; Lst [ Lst [ Sym var; exp ] ]; body ] ->
       Let (var, expr_of_s_exp exp, expr_of_s_exp body)

@@ -3,7 +3,7 @@
     看不见我看不见我
 |#
 
-(print (if true false true))
+(display (if #t #f #t))
 
 #|
 // https://github.com/ioccc-src/winner/blob/master/2011/akari/akari.c
