@@ -5,10 +5,13 @@
     - 在等待子任务返回结果时，当前的栈帧（Stack Frame）必须保留，因为它还得记住那个 n，好等会儿回来做加法
     - 如果你给的 n 是 1,000,000，计算机会开辟一百万个栈空间，最终导致 Stack Overflow
 |#
+
+#|
 (define (ref_sum n)
   (if (zero? n)
     n
     (+ n (ref_sum (dec n)))))
+|#
 
 #|
   在 sum 函数中，递归调用是整个函数的最后一件动作
@@ -22,6 +25,8 @@
     (sum (dec n) (+ n total))))
 
 (do
-  #| (print (ref_sum (read_num))) |#
-  (newline)
+  #|
+    (print (ref_sum (read_num)))
+    (newline)
+  |#
   (print (sum (read_num) 0)))
