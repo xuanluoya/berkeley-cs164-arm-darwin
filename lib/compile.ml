@@ -1,7 +1,7 @@
 open S_exp
+open Ast
 open Asm
 
-exception BadExpression of s_exp
 exception Compile_error of string
 
 type tagged_layout = { shift : int; mask : int; tag : int }
@@ -168,45 +168,8 @@ end)
 (* 'a是泛型参数，代表符号表中存储的值的类型 *)
 type 'a symtab = 'a Symtab.t
 
-(* function *)
-(* (define add (a b) (+ a b)) => defns = [{name = "add"; args = ["a"; "b"]; body = Lst [Sym "+"; Sym "a"; Sym "b"]}] *)
-type defn = { name : string; args : string list; body : s_exp }
-
 (* 字符串转换 *)
-let string_of_sym = function Sym s -> s | e -> raise (BadExpression e)
-
-(* 解析表达式列表，返回函数定义列表和剩余表达式 *)
-(* 限制：
-    - 不能先进行逻辑再 define，也不能在 define 之间穿插逻辑表达
-    - 强制要求最后一个表达式必须为程序的主体
-    - 不支持嵌套定义 *)
-let defns_and_body exps =
-  let get_defn = function
-    (* Lst (Sym name :: args) : 匹配非空列表，第一个内容为name *)
-    (* (define (add a b) (+ a b)) => Lst [Sym "define"; Lst [Sym "add"; Sym "x"; Sym "y"]; body] *)
-    | Lst [ Sym "define"; Lst (Sym name :: args); body ] ->
-        { name; args = List.map string_of_sym args; body }
-    | e -> raise (BadExpression e)
-  in
-  (*
-    exps: 剩余表达式列表
-    defns：已收集的函数定义列表（累加器）
-  *)
-  let rec go exps defns =
-    match exps with
-    (* 只剩一个表达式 *)
-    | [ e ] -> (List.rev defns, e)
-    (* 至少有一个表达式 *)
-    | d :: exps -> go exps (get_defn d :: defns)
-    | _ -> raise (BadExpression (Sym "empty"))
-  in
-  go exps []
-
-(* 遍历列表并查询是否符合条件 *)
-let is_defn defns name = List.exists (fun d -> d.name = name) defns
-
-(* 查找符合条件的函数定义 *)
-let get_defn defns name = List.find (fun d -> d.name = name) defns
+let string_of_sym = function Sym s -> s | e -> raise (BadSExpression e)
 
 let defn_label s =
   let asm_char c =
@@ -233,10 +196,10 @@ let defn_label s =
 let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
   match prog with
   | Num n -> [ Mov (Reg X0, operand_of_num n) ]
-  | Sym "true" -> [ Mov (Reg X0, operand_of_bool true) ]
-  | Sym "false" -> [ Mov (Reg X0, operand_of_bool false) ]
+  | True -> [ Mov (Reg X0, operand_of_bool true) ]
+  | False -> [ Mov (Reg X0, operand_of_bool false) ]
   (* 当监测到形似function名叫f的东西,并且不是尾递归 *)
-  | Lst (Sym f :: args) when is_defn defns f && not is_tail ->
+  | Call (f, args) when is_defn defns f && not is_tail ->
       (* 先从符号表里找到function f *)
       let defn = get_defn defns f in
       (* 当args与符号表里找到的defn的args长度一样 *)
@@ -338,7 +301,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
     - 可以直接复用当前栈帧，直接覆盖参数后重新执行函数
   *)
   (* 是尾递归 (is_defn -> true = is_tail -> true) *)
-  | Lst (Sym f :: args) when is_defn defns f && is_tail ->
+  | Call (f, args) when is_defn defns f && is_tail ->
       let defn = get_defn defns f in
       if List.length args = List.length defn.args then
         let compiled_args =
@@ -364,7 +327,8 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
             B (defn_label f);
           ]
       else raise (BadExpression prog)
-  | Lst [ Sym "let"; Lst [ Lst [ Sym var; e ] ]; body ] ->
+  | Call _ -> raise (BadExpression prog)
+  | Let (var, e, body) ->
       compile_exp ~curr_stack_size defns tab stack_index e false
       (* 从X0存到栈地址 *)
       @ [ Str (X0, BaseOffset (Sp, stack_index)) ]
@@ -372,14 +336,14 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
       @ compile_exp ~curr_stack_size defns
           (Symtab.add var stack_index tab)
           (stack_index - 8) body is_tail
-  | Sym var -> (
+  | Var var -> (
       (* 依靠变量名寻找栈地址 *)
       match Symtab.find_opt var tab with
       | Some addr ->
           (* 把栈值拉到X0上 *)
           [ Ldr (X0, BaseOffset (Sp, addr)) ]
       | None -> raise (Compile_error ("Undefined variable: " ^ var)))
-  | Lst [ Sym "pair"; e1; e2 ] ->
+  | Prim2 (Pair, e1, e2) ->
       (* Pair 的约定：
            - 堆中连续的16个字节
            - 起始位置    （偏移 0）：永远放第一个元素 e1
@@ -415,19 +379,19 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
         ]
       in
       e1_result @ e1_address @ e2_result @ pair_logic
-  | Lst [ Sym "left"; e ] ->
+  | Prim1 (Left, e) ->
       compile_exp ~curr_stack_size defns tab stack_index e false
       (* 类型检查 *)
       @ ensure_type_is_pair X0
       (* 减去tag才能得到真实寻址 *)
       @ [ Ldr (X0, BaseOffset (X0, -pair_tagged.tag)) ]
-  | Lst [ Sym "right"; e ] ->
+  | Prim1 (Right, e) ->
       compile_exp ~curr_stack_size defns tab stack_index e false
       (* 类型检查 *)
       @ ensure_type_is_pair X0
       (* 减去tag才能得到真实寻址 *)
       @ [ Ldr (X0, BaseOffset (X0, -pair_tagged.tag + 8)) ]
-  | Lst [ Sym "read_num" ] -> [ Bl (extern_function "read_num") ]
+  | Prim0 ReadNum -> [ Bl (extern_function "read_num") ]
   (*
     当遇到一个以 "do" 开头的表达式列表时
      ~ 依次编译列表中的每一个表达式，并将结果合并在一起：
@@ -440,7 +404,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
 
     `List.concat_map` : 对列表中的每个元素应用一个函数，然后将结果合并成一个新列表
   *)
-  | Lst (Sym "do" :: exps) when List.length exps > 0 ->
+  | Do exps ->
       List.mapi
         (fun i exp ->
           compile_exp ~curr_stack_size defns tab stack_index exp
@@ -452,7 +416,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
             (if i = List.length exps - 1 then is_tail else false))
         exps
       |> List.concat
-  | Lst [ Sym "print"; arg ] ->
+  | Prim1 (Print, arg) ->
       compile_exp ~curr_stack_size defns tab stack_index arg false
       @ [
           Bl (extern_function "print_value");
@@ -460,21 +424,21 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
           (* 副作用也应该有类型 *)
           Mov (Reg X0, operand_of_bool true);
         ]
-  | Lst [ Sym "newline" ] ->
+  | Prim0 NewLine ->
       [
         Bl (extern_function "print_newline"); Mov (Reg X0, operand_of_bool true);
       ]
-  | Lst [ Sym "inc"; arg ] ->
+  | Prim1 (Inc, arg) ->
       compile_exp ~curr_stack_size defns tab stack_index arg false
       (* 类型检查 *)
       @ ensure_type_is_num X0
       @ [ Add (Reg X0, Reg X0, operand_of_num 1) ]
-  | Lst [ Sym "dec"; arg ] ->
+  | Prim1 (Dec, arg) ->
       compile_exp ~curr_stack_size defns tab stack_index arg false
       (* 类型检查 *)
       @ ensure_type_is_num X0
       @ [ Sub (Reg X0, Reg X0, operand_of_num 1) ]
-  | Lst [ Sym "not"; arg ] ->
+  | Prim1 (Not, arg) ->
       compile_exp ~curr_stack_size defns tab stack_index arg false
       (* 类型检查 *)
       @ ensure_type_is_bool X0
@@ -488,13 +452,13 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
           Cmp (Reg X0, operand_of_bool false);
         ]
       @ zf_to_bool
-  | Lst [ Sym "zero?"; arg ] ->
+  | Prim1 (ZeroP, arg) ->
       compile_exp ~curr_stack_size defns tab stack_index arg false
       (* 类型检查 *)
       @ ensure_type_is_num X0
       @ [ Cmp (Reg X0, operand_of_num 0) ]
       @ zf_to_bool
-  | Lst [ Sym "num?"; arg ] ->
+  | Prim1 (NumP, arg) ->
       compile_exp ~curr_stack_size defns tab stack_index arg false
       @ [
           (* And : 只有在都是1的情况下才输出1 *)
@@ -502,7 +466,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
           Cmp (Reg X0, Imm num_tagged.tag);
         ]
       @ zf_to_bool
-  | Lst [ Sym "if"; test_exp; then_exp; else_exp ] ->
+  | If (test_exp, then_exp, else_exp) ->
       let else_label = gensym "else" in
       let continue_label = gensym "continue" in
       compile_exp ~curr_stack_size defns tab stack_index test_exp false
@@ -513,7 +477,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
       @ [ B continue_label ] @ [ Label else_label ]
       @ compile_exp ~curr_stack_size defns tab stack_index else_exp is_tail
       @ [ Label continue_label ]
-  | Lst [ Sym "+"; e1; e2 ] ->
+  | Prim2 (Plus, e1, e2) ->
       compile_exp ~curr_stack_size defns tab stack_index e1 false
       (* 类型检测 *)
       @ ensure_type_is_num X0
@@ -532,7 +496,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
           Add (Reg X0, Reg X1, Reg X0);
         ]
   (* Same like "+" *)
-  | Lst [ Sym "-"; e1; e2 ] ->
+  | Prim2 (Minus, e1, e2) ->
       compile_exp ~curr_stack_size defns tab stack_index e1 false
       (* 类型检测 *)
       @ ensure_type_is_num X0
@@ -541,7 +505,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
       (* 类型检测 *)
       @ ensure_type_is_num X0
       @ [ Ldr (X1, BaseOffset (Sp, stack_index)); Sub (Reg X0, Reg X1, Reg X0) ]
-  | Lst [ Sym "="; e1; e2 ] ->
+  | Prim2 (Eq, e1, e2) ->
       compile_exp ~curr_stack_size defns tab stack_index e1 false
       @ [ Str (X0, BaseOffset (Sp, stack_index)) ]
       @ compile_exp ~curr_stack_size defns tab (stack_index - 8) e2 false
@@ -553,7 +517,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
         ]
       (* zf to bool *)
       @ zf_to_bool
-  | Lst [ Sym "<"; e1; e2 ] ->
+  | Prim2 (Gt, e1, e2) ->
       compile_exp ~curr_stack_size defns tab stack_index e1 false
       @ [ Str (X0, BaseOffset (Sp, stack_index)) ]
       @ compile_exp ~curr_stack_size defns tab (stack_index - 8) e2 false
@@ -563,7 +527,7 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
           Cmp (Reg X1, Reg X0);
         ]
       @ lf_to_bool
-  | Lst [ Sym ">"; e1; e2 ] ->
+  | Prim2 (Lt, e1, e2) ->
       compile_exp ~curr_stack_size defns tab stack_index e1 false
       @ [ Str (X0, BaseOffset (Sp, stack_index)) ]
       @ compile_exp ~curr_stack_size defns tab (stack_index - 8) e2 false
@@ -573,7 +537,6 @@ let rec compile_exp ?(curr_stack_size = 0) defns tab stack_index prog is_tail =
           Cmp (Reg X1, Reg X0);
         ]
       @ lf_to_bool
-  | e -> raise (BadExpression e)
 
 (* 处理所有函数 - 下面有内存布局 *)
 
@@ -635,6 +598,7 @@ let compile_defn defns defn =
   let local_start = 16 in
   prologue
   (* curr_stack_size => 当前函数栈帧的大小 *)
+  (* 函数体的返回值就是整个函数的返回值，没有任何外层包装，绝对是尾位置 *)
   @ compile_exp ~curr_stack_size:stack_size defns ftab local_start defn.body
       true
   @ epilogue
@@ -699,7 +663,7 @@ let compile_defn defns defn =
   SP + 0  └─────────────────┘
             (低地址)
 *)
-let compile prog =
+let compile program =
   (* AppleArm64:
        - 硬件强制规定：任何通过 SP 进行的内存访问, 其 SP 的值必须是 16 字节对齐的
        - 神秘开场祈祷仪式
@@ -727,7 +691,7 @@ let compile prog =
   in
   (* defns : 函数，body : 逻辑 *)
   (* 分离 defns 和 body *)
-  let defns, body = defns_and_body prog in
+  let prog = program_of_s_exps program in
   [ Text; Global "entry"; P2align 2 ]
   @ extern_function_bridge "error"
   @ extern_function_bridge "read_num"
@@ -739,8 +703,8 @@ let compile prog =
       - 第一个可用槽在 `[SP+32]`
       - 使用后递减 8：下一个可用槽在 `[SP+24]`
       - 继续递减：`[SP+16]` → `[SP+8]` → ... *)
-  @ compile_exp ~curr_stack_size:64 defns Symtab.empty 32 body true
+  @ compile_exp ~curr_stack_size:64 prog.defns Symtab.empty 32 prog.body true
   @ epilogue
-  @ List.concat_map (compile_defn defns) defns
+  @ List.concat_map (compile_defn prog.defns) prog.defns
   |> List.map string_of_directive
   |> String.concat "\n"
