@@ -27,9 +27,9 @@ let prim1_of_string = function
 type prim2 = Plus | Minus | Eq | Lt | Gt | Cons
 
 let prim2_of_string = function
-  (* | "plus" -> Some Plus
-  | "minus" -> Some Minus
-  | "eq" -> Some Eq *)
+  | "add" -> Some Plus
+  | "sub" -> Some Minus
+  | "eq" -> Some Eq
   | "<" -> Some Lt
   | ">" -> Some Gt
   | "cons" -> Some Cons
