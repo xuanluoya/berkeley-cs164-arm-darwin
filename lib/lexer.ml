@@ -94,11 +94,6 @@ and parse_lst toks =
       let exp3, toks3 = parse_lst toks2 in
       (exp2 :: exp3, toks3)
 
-let parse s =
-  let toks = tokenize s in
-  let exp, l = parse_s_exp toks in
-  if List.length l = 0 then exp else raise ParseError
-
 let rec parse_many toks =
   match toks with
   | [] -> []

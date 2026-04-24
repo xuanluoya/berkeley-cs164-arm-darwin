@@ -1,8 +1,8 @@
 # Berkeley CS164 Arm64/Darwin
 
-本项目是对加州大学伯克利分校CS164-2025《编程语言与编译器》课程（2025年春季）的重构，专门针对Apple Silicon（ARM64）macOS系统。
+本项目是对加州大学伯克利分校CS164-2025《编程语言与编译器》课程（2025年春季）的重构，专门针对Apple Silicon（ARM64）macOS系统
 
-本项目实现了一个简单的 Scheme like 编译器，目标平台为 Apple Silicon（ARM64）汇编。
+本项目实现了一个简单的 Scheme like 编译器，目标平台为 Apple Silicon（ARM64）汇编
 
 ## 与课程差异
 
@@ -13,9 +13,9 @@
 
 ### 环境
 
-- OCaml 4.14+（包含dune构建系统）
-- Apple Clang/LLVM（Xcode命令行工具）
 - 搭载Apple Silicon（ARM64）处理器的macOS系统
+- OCaml 4.14+（包含 dune ）
+- Clang/LLVM
 
 ### 从源码构建和运行
 
@@ -42,4 +42,4 @@ dune exec berkeley-cs164-arm-darwin
 
 ## LICENSE
 
-MIT - [LICENSE](LICENSE)
+[MIT](LICENSE)

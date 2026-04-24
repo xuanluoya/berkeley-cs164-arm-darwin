@@ -14,30 +14,32 @@ typedef enum BoolFlag {
 typedef enum HeapFlag { HEAP_MASK = 0b111 } HeapFlag;
 
 typedef enum PairFlag { PAIR_TAG = 0b10 } PairFlag;
+typedef enum FuncFlag { FUNC_TAG = 0b110 } FuncFlag;
 
 extern uint64_t entry(void *heap);
 
 void print_value(uint64_t value) {
   if ((value & NUM_MASK) == NUM_TAG) {
-    uint64_t ivalue = (int64_t)value;
-    printf("%" PRIu64, ivalue >> NUM_SHIFT);
+    int64_t ivalue = (int64_t)value;
+    printf("%" PRIi64, ivalue >> NUM_SHIFT);
   } else if ((value & BOOL_MASK) == BOOL_TAG) {
     if (value >> BOOL_SHIFT) {
-      printf("True");
+      printf("<True>");
     } else {
-      printf("False");
+      printf("<False>");
     }
   } else if ((value & HEAP_MASK) == PAIR_TAG) {
-    // Pair 的最后两位是010，我们需要减去Tag获取真实地址
     uint64_t v1 = *(uint64_t *)(value - PAIR_TAG);
     uint64_t v2 = *(uint64_t *)(value - PAIR_TAG + 8);
-    printf("(pair ");
+    printf("(CONS ");
     print_value(v1);
     printf(" ");
     print_value(v2);
     printf(")");
+  } else if ((value & HEAP_MASK) == FUNC_TAG) {
+    printf("<Function>");
   } else {
-    printf("BAD Value: %llu", value);
+    printf("BAD VALUE %" PRIu64, value);
   }
 }
 

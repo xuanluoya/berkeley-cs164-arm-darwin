@@ -30,7 +30,7 @@ let string_of_register = function
   | Fp -> "x29"
   | Lr -> "x30"
 
-type operand = Reg of register | Imm of int
+type operand = Reg of register | Imm of int | Lo12 of string (* :lo12:label *)
 type address = BaseOffset of register * int | BaseIndex of register * register
 
 type addressing =
@@ -48,6 +48,7 @@ type directive =
   | Mov of operand * operand
   | Ldr of register * address (* 将数据从 内存地址 加载到 寄存器 中 *)
   | Str of register * address (* 将数据从 寄存器 存储到 内存地址 中 *)
+  | Adr of register * string (* 直接加载标签的完整 PC-relative 地址到寄存器 *)
   | Adrp of register * string
   | AddLabel of register * register * string
   | Stp of register * register * register * int * addressing
@@ -101,6 +102,8 @@ let string_of_directive = function
   | Global l -> Printf.sprintf ".global _%s" l
   | P2align i -> Printf.sprintf ".p2align %d" i
   | Label l -> Printf.sprintf "_%s:" l
+  | Adr (rd, label) ->
+      Printf.sprintf "\tadr %s, _%s" (string_of_register rd) label
   | Adrp (rd, label) ->
       Printf.sprintf "\tadrp %s, _%s@PAGE" (string_of_register rd) label
   | AddLabel (rd, rn, label) ->

@@ -20,13 +20,13 @@
     - 所有的中间状态（累加的和）都通过 total 参数显式传递了
 |#
 (define (sum n total)
-  (if (zero? n)
-    total
-    (sum (sub1 n) (+ n total))))
+    (if (zero? n)
+        total
+        (sum (sub1 n) (+ n total))))
 
 (do
-  #|
-    (display (ref_sum (readnum)))
-    (newline)
-  |#
-  (display (sum (readnum) 0)))
+    #|
+        (display (ref_sum (readnum)))
+        (newline)
+    |#
+    (display (sum (readnum) 0)))
