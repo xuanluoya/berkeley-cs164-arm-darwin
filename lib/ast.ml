@@ -48,6 +48,7 @@ type expr =
   | Call of expr * expr list
   | True
   | False
+  | Closure of string
 
 (* Lambda 构造器 -- 只有前端解析时存在的类型 *)
 type expr_lam =
@@ -180,8 +181,9 @@ let rec expr_of_expr_lam (defns : defn list ref) : expr_lam -> expr = function
       (* 把整个处理完的({name="_lambda__0"; args=["x"]; body=...})放到defns内 *)
       (* 往全局的函数定义表 (program_of_s_exps 里面的那个) 里追加一条记录 *)
       defns := { name; args; body } :: !defns;
-      (* 把自己当作变量返回 *)
-      Var name
+      (* 把自己当作闭包返回 *)
+      (* 编译器会识别这个闭包，如果没有用args则当作普通变量返回，用了就是闭包 *)
+      Closure name
 
 (* 解析表达式列表，返回函数定义列表和剩余表达式 *)
 (* 限制：

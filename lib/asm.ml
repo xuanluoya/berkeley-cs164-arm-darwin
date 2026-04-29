@@ -9,8 +9,9 @@
 type register =
   | X0 (* 返回值 / 第一个参数 *)
   | X1 (* 第二个参数 *)
-  | X8 (* 基址 *)
-  | X9 (* 基址 *)
+  | X8 (* 用作临时值中转 *)
+  | X9 (* 用作基址指针 *)
+  | X10 (* 用作闭包指针(?) *)
   | X19 (* callee-saved *)
   | X29 (* callee-saved *)
   | X30 (* callee-saved *)
@@ -23,6 +24,7 @@ let string_of_register = function
   | X1 -> "x1"
   | X8 -> "x8"
   | X9 -> "x9"
+  | X10 -> "X10"
   | X19 -> "x19"
   | X29 -> "x29"
   | X30 -> "x30"
@@ -49,8 +51,11 @@ type directive =
   | Ldr of register * address (* 将数据从 内存地址 加载到 寄存器 中 *)
   | Str of register * address (* 将数据从 寄存器 存储到 内存地址 中 *)
   | Adr of register * string (* 直接加载标签的完整 PC-relative 地址到寄存器 *)
-  | Adrp of register * string
-  | AddLabel of register * register * string
+  | Adrp of register * string (* 定位到目标符号所在 4KB 内存页的基地址 *)
+  | AddLabel of
+      register
+      * register
+      * string (* 在 ADRP 已经得到的基地址上，加上目标符号在页面内的具体偏移量 (PAGEOFF)，从而计算出最终精确地址 *)
   | Stp of register * register * register * int * addressing
   | Ldp of register * register * register * int * addressing
   | Add of operand * operand * operand
